@@ -4,6 +4,7 @@ import ca.uhn.fhir.jpa.binstore.DatabaseBinaryContentStorageSvcImpl;
 import ca.uhn.fhir.jpa.binstore.FilesystemBinaryStorageSvcImpl;
 import ca.uhn.fhir.jpa.binary.api.IBinaryStorageSvc;
 import ca.uhn.fhir.jpa.starter.AppProperties;
+import ca.uhn.fhir.jpa.starter.s3.S3BinaryStorageSvcImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -82,10 +83,38 @@ class FhirServerConfigCommonBinaryStorageTest {
 				.hasMessageContaining("binary_storage_filesystem_base_directory");
 	}
 
+	@Test
+	void s3ModeRequiresBucket() {
+		AppProperties props = new AppProperties();
+		props.setBinary_storage_mode(AppProperties.BinaryStorageMode.S3);
+
+		assertThatThrownBy(() -> newConfig().s3BinaryStorageSvc(props))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("binary_storage_s3_bucket");
+	}
+
+	@Test
+	void s3ModeCreatesService() {
+		AppProperties props = new AppProperties();
+		props.setBinary_storage_mode(AppProperties.BinaryStorageMode.S3);
+		props.setBinary_storage_s3_bucket("test-bucket");
+		props.setBinary_storage_s3_endpoint("http://localhost:9999");
+		props.setBinary_storage_s3_region("us-east-1");
+		props.setBinary_storage_s3_path_style_access(true);
+
+		S3BinaryStorageSvcImpl svc = newConfig().s3BinaryStorageSvc(props);
+
+		assertThat(svc).isNotNull();
+		assertThat(svc.getMinimumBinarySize()).isEqualTo(102_400);
+	}
+
 	private IBinaryStorageSvc binaryStorageSvc(AppProperties props) {
 		FhirServerConfigCommon config = newConfig();
 		if (props.getBinary_storage_mode() == AppProperties.BinaryStorageMode.FILESYSTEM) {
 			return config.filesystemBinaryStorageSvc(props);
+		}
+		if (props.getBinary_storage_mode() == AppProperties.BinaryStorageMode.S3) {
+			return config.s3BinaryStorageSvc(props);
 		}
 		return config.databaseBinaryStorageSvc(props);
 	}

@@ -418,17 +418,23 @@ hapi:
     # -------------------------------------------------------------------------------
     # O. Storage / Pagination / Caching
     # -------------------------------------------------------------------------------
-    # max_binary_size: 104857600
-    # max_page_size: 200
-    # retain_cached_searches_mins: 60
-    # reuse_cached_search_results_millis: 60000
-    #   validation:
-    #     requests_enabled: true
-    #     responses_enabled: true
-    #   binary_storage_enabled: true
-    #   binary_storage_mode: FILESYSTEM
-    #   binary_storage_filesystem_base_directory: /binstore
-    # When binary_storage_mode is FILESYSTEM and this value is not set,
+    max_binary_size: 104857600
+    max_page_size: 200
+    retain_cached_searches_mins: 60
+    reuse_cached_search_results_millis: 60000
+    validation:
+      requests_enabled: true
+      responses_enabled: true
+    binary_storage_enabled: true
+    binary_storage_mode: S3
+    binary_storage_filesystem_base_directory: /binstore
+    binary_storage_s3_endpoint: http://localhost.localstack.cloud:4566
+    binary_storage_s3_region: us-east-1
+    binary_storage_s3_bucket: fhir-binaries
+    binary_storage_s3_access_key: test
+    binary_storage_s3_secret_key: test
+    binary_storage_s3_path_style_access: true
+    # When binary_storage_mode is FILESYSTEM or S3 and this value is not set,
     # the starter defaults to 102400 bytes so smaller binaries stay inline.
     binary_storage_minimum_binary_size: 4000
 

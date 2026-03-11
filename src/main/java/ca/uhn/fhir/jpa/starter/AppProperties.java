@@ -64,11 +64,18 @@ public class AppProperties {
 
 	public enum BinaryStorageMode {
 		DATABASE,
-		FILESYSTEM
+		FILESYSTEM,
+		S3
 	}
 
 	private BinaryStorageMode binary_storage_mode = BinaryStorageMode.DATABASE;
 	private String binary_storage_filesystem_base_directory;
+	private String binary_storage_s3_endpoint;
+	private String binary_storage_s3_region = "us-east-1";
+	private String binary_storage_s3_bucket;
+	private String binary_storage_s3_access_key;
+	private String binary_storage_s3_secret_key;
+	private Boolean binary_storage_s3_path_style_access = false;
 	private Integer binary_storage_minimum_binary_size;
 	private Boolean bulk_export_enabled = false;
 	private Boolean bulk_import_enabled = false;
@@ -511,6 +518,54 @@ public class AppProperties {
 
 	public void setBinary_storage_filesystem_base_directory(String binary_storage_filesystem_base_directory) {
 		this.binary_storage_filesystem_base_directory = binary_storage_filesystem_base_directory;
+	}
+
+	public String getBinary_storage_s3_endpoint() {
+		return binary_storage_s3_endpoint;
+	}
+
+	public void setBinary_storage_s3_endpoint(String binary_storage_s3_endpoint) {
+		this.binary_storage_s3_endpoint = binary_storage_s3_endpoint;
+	}
+
+	public String getBinary_storage_s3_region() {
+		return binary_storage_s3_region;
+	}
+
+	public void setBinary_storage_s3_region(String binary_storage_s3_region) {
+		this.binary_storage_s3_region = binary_storage_s3_region;
+	}
+
+	public String getBinary_storage_s3_bucket() {
+		return binary_storage_s3_bucket;
+	}
+
+	public void setBinary_storage_s3_bucket(String binary_storage_s3_bucket) {
+		this.binary_storage_s3_bucket = binary_storage_s3_bucket;
+	}
+
+	public String getBinary_storage_s3_access_key() {
+		return binary_storage_s3_access_key;
+	}
+
+	public void setBinary_storage_s3_access_key(String binary_storage_s3_access_key) {
+		this.binary_storage_s3_access_key = binary_storage_s3_access_key;
+	}
+
+	public String getBinary_storage_s3_secret_key() {
+		return binary_storage_s3_secret_key;
+	}
+
+	public void setBinary_storage_s3_secret_key(String binary_storage_s3_secret_key) {
+		this.binary_storage_s3_secret_key = binary_storage_s3_secret_key;
+	}
+
+	public Boolean getBinary_storage_s3_path_style_access() {
+		return binary_storage_s3_path_style_access;
+	}
+
+	public void setBinary_storage_s3_path_style_access(Boolean binary_storage_s3_path_style_access) {
+		this.binary_storage_s3_path_style_access = binary_storage_s3_path_style_access;
 	}
 
 	public Integer getBinary_storage_minimum_binary_size() {

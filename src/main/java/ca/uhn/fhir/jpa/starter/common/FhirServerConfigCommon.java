@@ -10,6 +10,7 @@ import ca.uhn.fhir.jpa.model.config.SubscriptionSettings;
 import ca.uhn.fhir.jpa.model.entity.StorageSettings;
 import ca.uhn.fhir.jpa.starter.AppProperties;
 import ca.uhn.fhir.jpa.starter.elastic.ElasticsearchBootSvcImpl;
+import ca.uhn.fhir.jpa.starter.s3.S3BinaryStorageSvcImpl;
 import ca.uhn.fhir.jpa.starter.util.JpaHibernatePropertiesProvider;
 import ca.uhn.fhir.jpa.subscription.match.deliver.email.EmailSenderImpl;
 import ca.uhn.fhir.jpa.subscription.match.deliver.email.IEmailSender;
@@ -25,7 +26,15 @@ import org.springframework.context.annotation.*;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.util.Assert;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
 
+import java.net.URI;
 import java.util.HashSet;
 import java.util.stream.Collectors;
 
@@ -397,10 +406,61 @@ public class FhirServerConfigCommon {
 		return databaseSvc;
 	}
 
+	@Bean
+	@ConditionalOnProperty(prefix = "hapi.fhir", name = "binary_storage_mode", havingValue = "S3")
+	public S3BinaryStorageSvcImpl s3BinaryStorageSvc(AppProperties appProperties) {
+		String bucket = appProperties.getBinary_storage_s3_bucket();
+		Assert.hasText(bucket, "binary_storage_s3_bucket must be provided when binary_storage_mode=S3");
+
+		S3Client s3Client = buildS3Client(appProperties);
+		S3BinaryStorageSvcImpl s3Svc = new S3BinaryStorageSvcImpl(s3Client, bucket);
+
+		Integer inlineResourceThreshold = resolveInlineResourceThreshold(appProperties);
+		int minimumBinarySize =
+				inlineResourceThreshold == null ? DEFAULT_FILESYSTEM_INLINE_THRESHOLD : inlineResourceThreshold;
+		s3Svc.setMinimumBinarySize(minimumBinarySize);
+
+		Integer maxBinarySize = appProperties.getMax_binary_size();
+		if (maxBinarySize != null) {
+			s3Svc.setMaximumBinarySize(maxBinarySize.longValue());
+		}
+
+		return s3Svc;
+	}
+
+	private static S3Client buildS3Client(AppProperties appProperties) {
+		String endpoint = appProperties.getBinary_storage_s3_endpoint();
+		String region = appProperties.getBinary_storage_s3_region() != null
+				? appProperties.getBinary_storage_s3_region()
+				: "us-east-1";
+		String accessKey = appProperties.getBinary_storage_s3_access_key();
+		String secretKey = appProperties.getBinary_storage_s3_secret_key();
+		Boolean pathStyle = Boolean.TRUE.equals(appProperties.getBinary_storage_s3_path_style_access());
+
+		S3ClientBuilder builder = S3Client.builder().region(Region.of(region));
+
+		if (endpoint != null && !endpoint.isBlank()) {
+			builder.endpointOverride(URI.create(endpoint));
+		}
+		if (pathStyle) {
+			builder.forcePathStyle(true);
+		}
+		if (accessKey != null && !accessKey.isBlank() && secretKey != null && !secretKey.isBlank()) {
+			AwsCredentialsProvider credentials =
+					StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey));
+			builder.credentialsProvider(credentials);
+		} else {
+			builder.credentialsProvider(DefaultCredentialsProvider.create());
+		}
+
+		return builder.build();
+	}
+
 	private Integer resolveInlineResourceThreshold(AppProperties appProperties) {
 		Integer inlineResourceThreshold = appProperties.getBinary_storage_minimum_binary_size();
 		if (inlineResourceThreshold == null
-				&& appProperties.getBinary_storage_mode() == AppProperties.BinaryStorageMode.FILESYSTEM) {
+				&& (appProperties.getBinary_storage_mode() == AppProperties.BinaryStorageMode.FILESYSTEM
+						|| appProperties.getBinary_storage_mode() == AppProperties.BinaryStorageMode.S3)) {
 			return DEFAULT_FILESYSTEM_INLINE_THRESHOLD;
 		}
 		return inlineResourceThreshold;

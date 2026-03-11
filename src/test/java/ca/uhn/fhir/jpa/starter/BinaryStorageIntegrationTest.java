@@ -2,24 +2,38 @@ package ca.uhn.fhir.jpa.starter;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.jpa.binstore.FilesystemBinaryStorageSvcImpl;
+import ca.uhn.fhir.jpa.binary.api.IBinaryStorageSvc;
 import ca.uhn.fhir.jpa.dao.data.IBinaryStorageEntityDao;
 import ca.uhn.fhir.jpa.model.entity.BinaryStorageEntity;
+import ca.uhn.fhir.jpa.starter.s3.S3BinaryStorageSvcImpl;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.client.api.ServerValidationModeEnum;
 import org.hl7.fhir.instance.model.api.IIdType;
 import org.hl7.fhir.r4.model.Patient;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.BucketAlreadyExistsException;
+import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -324,5 +338,88 @@ class BinaryStorageFilesystemCustomThresholdIT extends BaseBinaryStorageIntegrat
 	@AfterEach
 	void cleanUpDirectory() throws IOException {
 		deleteDirectoryContents(BASE_DIRECTORY);
+	}
+}
+
+@Disabled("Requires Docker/Testcontainers (MinIO) to be available")
+@Testcontainers
+@ActiveProfiles("test")
+@SpringBootTest(
+	webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+	classes = Application.class,
+	properties = {
+		BaseBinaryStorageIntegrationTest.COMMON_CONFIG_LOCATION,
+		"spring.datasource.url=jdbc:h2:mem:binary-storage-s3;DB_CLOSE_DELAY=-1",
+		BaseBinaryStorageIntegrationTest.COMMON_H2_USERNAME,
+		BaseBinaryStorageIntegrationTest.COMMON_H2_PASSWORD,
+		BaseBinaryStorageIntegrationTest.COMMON_JPA_DDL,
+		BaseBinaryStorageIntegrationTest.COMMON_HIBERNATE_DIALECT,
+		BaseBinaryStorageIntegrationTest.COMMON_HIBERNATE_SEARCH_DISABLED,
+		BaseBinaryStorageIntegrationTest.COMMON_FLYWAY_DISABLED,
+		BaseBinaryStorageIntegrationTest.COMMON_FHIR_VERSION,
+		BaseBinaryStorageIntegrationTest.COMMON_REPO_VALIDATION_DISABLED,
+		BaseBinaryStorageIntegrationTest.COMMON_MDM_DISABLED,
+		BaseBinaryStorageIntegrationTest.COMMON_CR_DISABLED,
+		BaseBinaryStorageIntegrationTest.COMMON_SUBSCRIPTION_WS_DISABLED,
+		BaseBinaryStorageIntegrationTest.COMMON_BEAN_OVERRIDE_ALLOWED,
+		BaseBinaryStorageIntegrationTest.COMMON_CIRCULAR_REFERENCES,
+		BaseBinaryStorageIntegrationTest.COMMON_MCP_DISABLED
+	}
+)
+class BinaryStorageS3ModeIT extends BaseBinaryStorageIntegrationTest {
+
+	private static final String BUCKET = "fhir-binaries";
+	private static final String ACCESS_KEY = "minioadmin";
+	private static final String SECRET_KEY = "minioadmin";
+
+	@Container
+	private static final org.testcontainers.containers.GenericContainer<?> minio =
+			new org.testcontainers.containers.GenericContainer<>("minio/minio:latest")
+					.withExposedPorts(9000)
+					.withCommand("server", "/data");
+
+	@DynamicPropertySource
+	static void s3Properties(DynamicPropertyRegistry registry) {
+		String endpoint = "http://" + minio.getHost() + ":" + minio.getMappedPort(9000);
+		createBucket(endpoint);
+		registry.add("hapi.fhir.binary_storage_enabled", () -> "true");
+		registry.add("hapi.fhir.binary_storage_mode", () -> "S3");
+		registry.add("hapi.fhir.binary_storage_s3_endpoint", () -> endpoint);
+		registry.add("hapi.fhir.binary_storage_s3_region", () -> "us-east-1");
+		registry.add("hapi.fhir.binary_storage_s3_bucket", () -> BUCKET);
+		registry.add("hapi.fhir.binary_storage_s3_access_key", () -> ACCESS_KEY);
+		registry.add("hapi.fhir.binary_storage_s3_secret_key", () -> SECRET_KEY);
+		registry.add("hapi.fhir.binary_storage_s3_path_style_access", () -> "true");
+		registry.add("hapi.fhir.binary_storage_minimum_binary_size", () -> "102400");
+	}
+
+	private static void createBucket(String endpoint) {
+		try (S3Client client = S3Client.builder()
+				.endpointOverride(URI.create(endpoint))
+				.region(Region.US_EAST_1)
+				.credentialsProvider(
+						StaticCredentialsProvider.create(AwsBasicCredentials.create(ACCESS_KEY, SECRET_KEY)))
+				.forcePathStyle(true)
+				.build()) {
+			client.createBucket(CreateBucketRequest.builder().bucket(BUCKET).build());
+		} catch (BucketAlreadyExistsException e) {
+			// Bucket already created (e.g. by a previous test run)
+		}
+	}
+
+	@Autowired
+	private IBinaryStorageSvc binaryStorageSvc;
+
+	@Test
+	void largeAttachmentStoredInS3() {
+		assertThat(binaryStorageSvc).isInstanceOf(S3BinaryStorageSvcImpl.class);
+		assertThat(binaryStorageSvc.getMinimumBinarySize()).isEqualTo(102_400);
+
+		byte[] payload = randomBytes(150_000);
+		IIdType patientId = createPatientWithPhoto(uniqueLabel("s3"), payload);
+
+		Patient read = (Patient) client.read().resource("Patient").withId(patientId).execute();
+		assertThat(read.getPhoto()).hasSize(1);
+		assertThat(read.getPhoto().get(0).getData()).isEqualTo(payload);
 	}
 }
