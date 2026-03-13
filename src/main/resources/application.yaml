@@ -103,11 +103,11 @@ spring:
     fail-on-missing-locations: false
 
   datasource:
-    # url: "jdbc:h2:file:./target/database/h2"
-    url: jdbc:h2:mem:test_mem
-    username: sa
-    password: null
-    driver-class-name: org.h2.Driver
+    # PostgreSQL datasource configuration
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/fhir}
+    username: ${SPRING_DATASOURCE_USERNAME:fhir}
+    password: ${SPRING_DATASOURCE_PASSWORD:fhir}
+    driver-class-name: org.postgresql.Driver
     # max-active: 15     # (ignored with HikariCP; use hikari.maximum-pool-size)
     hikari:
       maximum-pool-size: 10
@@ -120,7 +120,7 @@ spring:
         # Hibernate dialect is auto-detected except for H2/Postgres.
         # If using H2:     ca.uhn.fhir.jpa.model.dialect.HapiFhirH2Dialect
         # If using Postgres: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect
-        dialect: ${HIBERNATE_DIALECT:ca.uhn.fhir.jpa.model.dialect.HapiFhirH2Dialect}
+        dialect: ${HIBERNATE_DIALECT:ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect}
 
         # --- Optional Hibernate DDL & tuning (commented out from source) ---
         hbm2ddl:
@@ -254,7 +254,7 @@ hapi:
           # enable_expression_caching: true
       terminology:
         valueset_preexpansion_mode: REQUIRE            # USE_IF_PRESENT | REQUIRE | IGNORE
-        valueset_expansion_mode: PERFORM_NAIVE_EXPANSION   # AUTO | USE_EXPANSION_OPERATION | PERFORM_NAIVE_EXPANSION
+        valueset_expansion_mode: USE_EXPANSION_OPERATION   # AUTO | USE_EXPANSION_OPERATION | PERFORM_NAIVE_EXPANSION
         valueset_membership_mode: USE_EXPANSION            # AUTO | USE_VALIDATE_CODE_OPERATION | USE_EXPANSION
         code_lookup_mode: USE_VALIDATE_CODE_OPERATION      # AUTO | USE_VALIDATE_CODE_OPERATION | USE_CODESYSTEM_URL
       data:
@@ -305,14 +305,14 @@ hapi:
     # mass_ingestion_mode_enabled: false
     # auto_version_reference_at_paths: Device.patient, Device.location, Device.parent, DeviceMetric.parent, DeviceMetric.source, Observation.device, Observation.subject
     # client_id_strategy: ALPHANUMERIC
-    # server_id_strategy: SEQUENTIAL_NUMERIC
+    server_id_strategy: UUID
     # enforce_referential_integrity_on_delete: false
     # enforce_referential_integrity_on_write: false
     # etag_support_enabled: true
     # expunge_enabled: true
-    # fhirpath_interceptor_enabled: false
+    fhirpath_interceptor_enabled: true
     # filter_search_enabled: true
-    # graphql_enabled: true
+    graphql_enabled: false
 
     # Thread pool configuration for maintenance operations
     # Defaults to Runtime.getRuntime().availableProcessors() if not specified
@@ -323,7 +323,7 @@ hapi:
     # -------------------------------------------------------------------------------
     # G. Narrative & Validation
     # -------------------------------------------------------------------------------
-    narrative_enabled: false
+    narrative_enabled: true
     # validation:
     #   requests_enabled: true
     #   responses_enabled: true
@@ -356,13 +356,16 @@ hapi:
     # -------------------------------------------------------------------------------
     # J. Partitioning & Multitenancy
     # -------------------------------------------------------------------------------
-    # partitioning:
-    #   allow_references_across_partitions: false
-    #   partitioning_include_in_search_hashes: false
-    #   default_partition_id: 0
-    # database_partition_mode_enabled: true
-    # patient_id_partitioning_mode: true
-    # request_tenant_partitioning_mode: false
+    partitioning:
+      allow_references_across_partitions: false
+      partitioning_include_in_search_hashes: false
+      default_partition_id: 0
+    database_partition_mode_enabled: true
+    patient_id_partitioning_mode: false
+    request_tenant_partitioning_mode: true
+    tenant:
+      tenant_identification_strategy: HEADER
+      tenant_identification_header: x-tenant-id
 
     # -------------------------------------------------------------------------------
     # K. CORS
@@ -371,6 +374,29 @@ hapi:
       allow_Credentials: true
       allowed_origin:
         - "*"
+      
+    # -------------------------------------------------------------------------------
+    # K2. SMART on FHIR Security
+    # -------------------------------------------------------------------------------
+    security:
+      enabled: true
+      smart:
+        enabled: true
+        keycloak-base-domain: host.docker.internal:9090
+        realm: boolbyte
+        base-domain: localhost:8080
+        default-organization: default
+        system-client-id: "boolbyte"
+    
+    public-endpoints:
+      - "/metadata"
+      - "/health"
+      - "/fhir/metadata"
+      - "/fhir/health"
+      - "/.well-known/smart-configuration"
+      - "/fhir/swagger-ui/**"
+      - "/fhir/api-docs/**"
+      - "/actuator/health"
 
     # -------------------------------------------------------------------------------
     # L. Search Orchestration
@@ -424,7 +450,7 @@ hapi:
     reuse_cached_search_results_millis: 60000
     validation:
       requests_enabled: true
-      responses_enabled: true
+      responses_enabled: false
     binary_storage_enabled: true
     binary_storage_mode: S3
     binary_storage_filesystem_base_directory: /binstore
@@ -441,35 +467,35 @@ hapi:
     # -------------------------------------------------------------------------------
     # P. Remote Terminology Service (disabled by default)
     # -------------------------------------------------------------------------------
-    # remote_terminology_service:
-    #   all:
-    #     system: "*"
-    #     url: "https://tx.fhir.org/r4/"
-    #   snomed:
-    #     system: "http://snomed.info/sct"
-    #     url: "https://tx.fhir.org/r4/"
-    #   loinc:
-    #     system: "http://loinc.org"
-    #     url: "https://hapi.fhir.org/baseR4/"
+    remote_terminology_service:
+      all:
+        system: "*"
+        url: "https://tx.fhir.org/r4/"
+      snomed:
+        system: "http://snomed.info/sct"
+        url: "https://tx.fhir.org/r4/"
+      loinc:
+        system: "http://loinc.org"
+        url: "https://tx.fhir.org/r4/"
 
     # -------------------------------------------------------------------------------
     # Q. Subscriptions (disabled by default)
     # -------------------------------------------------------------------------------
-    # subscription:
-    #   resthook_enabled: true
-    #   websocket_enabled: false
-    #   polling_interval_ms: 5000
-    #   immediately_queued: false
-    #   email:
-    #     from: some@test.com
-    #     host: google.com
-    #     port:
-    #     username:
-    #     password:
-    #     auth:
-    #       startTlsEnable:
-    #       startTlsRequired:
-    #       quitWait:
+    subscription:
+      resthook_enabled: true
+      websocket_enabled: false
+      polling_interval_ms: 5000
+      immediately_queued: false
+      email:
+        from: fhir@boolbyte.com
+        host: smtp.gmail.com
+        port: 587
+        username: fhir@boolbyte.com
+        password: Boolbyte@123
+        # auth:
+        #   startTlsEnable:
+        #   startTlsRequired:
+        #   quitWait:
 
     # -------------------------------------------------------------------------------
     # R. LastN (analytics)
@@ -485,3 +511,7 @@ hapi:
         server_address: 'http://localhost:8080/fhir'
         refuse_to_fetch_third_party_urls: false
         fhir_version: R4
+
+boolbyte:
+  interceptor:
+    questionnaire: true

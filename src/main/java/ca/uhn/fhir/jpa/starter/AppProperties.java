@@ -6,6 +6,7 @@ import ca.uhn.fhir.jpa.api.config.JpaStorageSettings.ClientIdStrategyEnum;
 import ca.uhn.fhir.jpa.api.config.JpaStorageSettings.IdStrategyEnum;
 import ca.uhn.fhir.jpa.model.entity.NormalizedQuantitySearchLevel;
 import ca.uhn.fhir.jpa.starter.ig.ExtendedPackageInstallationSpec;
+import ca.uhn.fhir.jpa.starter.tenant.TenantIdentificationStrategyEnum;
 import ca.uhn.fhir.rest.api.EncodingEnum;
 import org.hl7.fhir.r4.model.Bundle;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -103,6 +104,7 @@ public class AppProperties {
 	private Partitioning partitioning = null;
 	private Boolean validate_resource_status_for_package_upload = true;
 	private Boolean install_transitive_ig_dependencies = true;
+	private Tenant tenant = null;
 
 	private List<String> install_additional_resources_from_ig_folders = new ArrayList<>();
 	private Map<String, ExtendedPackageInstallationSpec> implementationGuides = null;
@@ -194,6 +196,14 @@ public class AppProperties {
 
 	public void setPartitioning(Partitioning partitioning) {
 		this.partitioning = partitioning;
+	}
+
+	public Tenant getTenant() {
+		return tenant;
+	}
+
+	public void setTenant(Tenant tenant) {
+		this.tenant = tenant;
 	}
 
 	public Boolean getCr_enabled() {
@@ -1116,6 +1126,34 @@ public class AppProperties {
 			request_tenant_partitioning_mode = theRequest_tenant_partitioning_mode;
 		}
 	}
+
+	public static class Tenant {
+
+		private String tenant_identification_header = "x-tenant-id";
+		private TenantIdentificationStrategyEnum tenant_identification_strategy =
+			TenantIdentificationStrategyEnum.HEADER;
+
+		public String getTenant_identification_header() {
+			return tenant_identification_header;
+		}
+
+		public void setTenant_identification_header(
+			String tenant_identification_header
+		) {
+			this.tenant_identification_header = tenant_identification_header;
+		}
+
+		public TenantIdentificationStrategyEnum getTenant_identification_strategy() {
+			return tenant_identification_strategy;
+		}
+
+		public void setTenant_identification_strategy(
+			TenantIdentificationStrategyEnum tenant_identification_strategy
+		) {
+			this.tenant_identification_strategy = tenant_identification_strategy;
+		}
+	}
+
 
 	public static class RemoteSystem {
 		private String system;

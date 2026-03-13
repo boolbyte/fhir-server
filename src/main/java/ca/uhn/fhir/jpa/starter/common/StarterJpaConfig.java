@@ -46,12 +46,17 @@ import ca.uhn.fhir.jpa.search.DatabaseBackedPagingProvider;
 import ca.uhn.fhir.jpa.search.IStaleSearchDeletingSvc;
 import ca.uhn.fhir.jpa.search.StaleSearchDeletingSvcImpl;
 import ca.uhn.fhir.jpa.starter.AppProperties;
+import ca.uhn.fhir.jpa.starter.BoolbyteProperties;
 import ca.uhn.fhir.jpa.starter.annotations.OnCorsPresent;
 import ca.uhn.fhir.jpa.starter.annotations.OnImplementationGuidesPresent;
 import ca.uhn.fhir.jpa.starter.common.validation.IRepositoryValidationInterceptorFactory;
 import ca.uhn.fhir.jpa.starter.elastic.ElasticsearchBootSvcImpl;
 import ca.uhn.fhir.jpa.starter.ig.ExtendedPackageInstallationSpec;
 import ca.uhn.fhir.jpa.starter.ig.IImplementationGuideOperationProvider;
+import ca.uhn.fhir.jpa.starter.interceptor.QuestionnairePartitionInterceptor;
+import ca.uhn.fhir.jpa.starter.interceptor.QuestionnairePartitionSearchInterceptor;
+import ca.uhn.fhir.jpa.starter.security.SmartAuthInterceptor;
+import ca.uhn.fhir.jpa.starter.security.SmartProperties;
 import ca.uhn.fhir.jpa.subscription.util.SubscriptionDebugLogInterceptor;
 import ca.uhn.fhir.jpa.util.ResourceCountCache;
 import ca.uhn.fhir.mdm.provider.MdmProviderLoader;
@@ -307,6 +312,7 @@ public class StarterJpaConfig {
 	public RestfulServer restfulServer(
 			IFhirSystemDao<?, ?> fhirSystemDao,
 			AppProperties appProperties,
+			BoolbyteProperties boolbyteProperties,
 			DaoRegistry daoRegistry,
 			Optional<MdmProviderLoader> mdmProviderProvider,
 			IJpaSystemProvider jpaSystemProvider,
@@ -317,6 +323,8 @@ public class StarterJpaConfig {
 			IValidationSupport theValidationSupport,
 			DatabaseBackedPagingProvider databaseBackedPagingProvider,
 			LoggingInterceptor loggingInterceptor,
+			Optional<QuestionnairePartitionInterceptor> questionnairePartitionInterceptor,
+		Optional<QuestionnairePartitionSearchInterceptor> questionnairePartitionSearchInterceptor,
 			Optional<TerminologyUploaderProvider> terminologyUploaderProvider,
 			Optional<SubscriptionTriggeringProvider> subscriptionTriggeringProvider,
 			Optional<CorsInterceptor> corsInterceptor,
@@ -334,7 +342,10 @@ public class StarterJpaConfig {
 			ApplicationContext appContext,
 			Optional<IpsOperationProvider> theIpsOperationProvider,
 			Optional<IImplementationGuideOperationProvider> implementationGuideOperationProvider,
-			DiffProvider diffProvider) {
+			DiffProvider diffProvider,
+			SmartProperties smartProperties,
+		Optional<SmartAuthInterceptor> smartAuthInterceptor
+		) {
 		RestfulServer fhirServer = new RestfulServer(fhirSystemDao.getContext());
 
 		List<String> supportedResourceTypes = appProperties.getSupported_resource_types();
@@ -504,6 +515,28 @@ public class StarterJpaConfig {
 
 		// Diff Provider
 		fhirServer.registerProvider(diffProvider);
+
+		// register app interceptors
+		if (boolbyteProperties.getInterceptor().isQuestionnaire()) {
+			questionnairePartitionInterceptor.ifPresent(
+				fhirServer::registerInterceptor
+			);
+			questionnairePartitionSearchInterceptor.ifPresent(
+				fhirServer::registerInterceptor
+			);
+		} else {
+			ourLog.info(
+				"boolbyte.interceptor.questionnaire is disabled; not registering Questionnaire partition interceptors"
+			);
+		}
+
+		if (smartProperties != null && smartProperties.isEnabled()) {
+			smartAuthInterceptor.ifPresent(fhirServer::registerInterceptor);
+		} else {
+			ourLog.info(
+				"SMART on FHIR is disabled in properties; not registering SmartAuthInterceptor"
+			);
+		}
 
 		// register custom interceptors
 		registerCustomInterceptors(fhirServer, appContext, appProperties.getCustomInterceptorClasses());
